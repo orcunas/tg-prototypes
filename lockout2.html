@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lockpicking Game</title>
+    <style>
+        body { margin: 0; padding: 0; background: #0a0a0a; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: Arial, sans-serif; color: white; overflow: hidden; }
+        .game-container { text-align: center; background: #1a1a1a; padding: 30px; border-radius: 20px; box-shadow: 0 0 30px rgba(0,0,0,0.8); position: relative; }
+        .info-panel { display: flex; justify-content: space-around; margin-bottom: 20px; font-size: 18px; }
+        .info-item { background: #2a2a2a; padding: 10px 20px; border-radius: 10px; min-width: 120px; }
+        .info-label { font-size: 14px; color: #888; display: block; margin-bottom: 5px; }
+        .main-container { display: flex; gap: 30px; align-items: center; justify-content: center; margin: 20px auto; }
+        .lock-container { position: relative; width: 400px; height: 300px; background: #222; border: 3px solid #444; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+        #lockCanvas { border-radius: 5px; }
+        .control-container { width: 300px; height: 300px; background: #1a1a1a; border: 3px solid #444; border-radius: 10px; position: relative; overflow: hidden; cursor: crosshair; }
+        .mouse-area { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        .control-label { position: absolute; color: #666; font-size: 12px; pointer-events: none; }
+        .control-label.x { bottom: 5px; left: 50%; transform: translateX(-50%); }
+        .control-label.y { left: 5px; top: 50%; transform: translateY(-50%) rotate(-90deg); }
+        .start-button { background: #4CAF50; color: white; border: none; padding: 15px 40px; font-size: 20px; border-radius: 10px; cursor: pointer; margin-top: 20px; transition: all 0.3s; }
+        .start-button:hover { background: #45a049; transform: translateY(-2px); }
+        .start-button:disabled { background: #666; cursor: not-allowed; opacity: 0.7; }
+        .game-over { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); padding: 40px; border-radius: 15px; text-align: center; display: none; z-index: 1000; }
+        .game-over h2 { margin: 0 0 20px 0; font-size: 36px; }
+        .success { color: #4CAF50; }
+        .failure { color: #ff4444; }
+        .restart-button { background: #2196F3; color: white; border: none; padding: 15px 40px; font-size: 20px; border-radius: 10px; cursor: pointer; margin-top: 20px; }
+        .restart-button:hover { background: #1976D2; }
+        .lives-container { display: flex; gap: 10px; justify-content: center; align-items: center; }
+        .life-icon { width: 20px; height: 30px; background: #666; clip-path: polygon(50% 0%, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0% 50%, 40% 40%); transition: all 0.3s; }
+        .life-icon.active { background: #4CAF50; }
+        .life-icon.broken { background: #ff4444; transform: rotate(45deg); }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Lockout</h1>
+        <div class="info-panel">
+            <div class="info-item">
+                <span class="info-label">Time</span>
+                <span id="timer">15</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Lockpick</span>
+                <div class="lives-container">
+                    <div class="life-icon active" id="life1"></div>
+                    <div class="life-icon active" id="life2"></div>
+                    <div class="life-icon active" id="life3"></div>
+                </div>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Difficulty</span>
+                <span id="difficulty">-</span>
+            </div>
+        </div>
+        <div class="main-container">
+            <div class="lock-container">
+                <canvas id="lockCanvas" width="400" height="300"></canvas>
+            </div>
+            <div class="control-container">
+                <div id="mouseArea" class="mouse-area"></div>
+                <span class="control-label x">X</span>
+                <span class="control-label y">Y</span>
+            </div>
+        </div>
+        <button id="startButton" class="start-button">START</button>
+        <div class="game-over" id="gameOver">
+            <h2 id="gameOverTitle">Game Over!</h2>
+            <p id="gameOverMessage"></p>
+            <button class="restart-button" onclick="resetGame()">Play Again</button>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('lockCanvas');
+        const ctx = canvas.getContext('2d');
+        const mouseArea = document.getElementById('mouseArea');
+        const startButton = document.getElementById('startButton');
+        const gameOver = document.getElementById('gameOver');
+        const timerLabel = document.getElementById('timer');
+        const difficultyLabel = document.getElementById('difficulty');
+        const lifeIcons = [
+            document.getElementById('life1'),
+            document.getElementById('life2'),
+            document.getElementById('life3')
+        ];
+        let gameRunning = false, gameStarted = false;
+        let isMouseInArea = false, isMouseDown = false, hasMoved = false;
+        let timeLeft = 15, lives = 3, gameTimer = null;
+        let strainStartTime = 0, isStraining = false;
+        let shortPinAngle = 0, longPinAngle = 0;
+        let targetShortAngle = 0, targetLongAngle = 0;
+        let tolerance = 0;
+        const centerX = canvas.width / 2, centerY = canvas.height / 2;
+        const shortPinLength = 60, longPinLength = 90;
+        let shakeX = 0, shakeY = 0, mouseX = 0, mouseY = 0;
+
+        function init() {
+            const diff = Math.floor(Math.random() * 11) + 5;
+            tolerance = (diff / 100) * Math.PI * 2;
+            difficultyLabel.textContent = `${diff}%`;
+            targetShortAngle = Math.random() * Math.PI * 2;
+            targetLongAngle = Math.random() * Math.PI * 2;
+            do {
+                shortPinAngle = Math.random() * Math.PI * 2;
+                longPinAngle = Math.random() * Math.PI * 2;
+            } while (
+                Math.min(Math.abs(shortPinAngle - targetShortAngle), Math.PI * 2 - Math.abs(shortPinAngle - targetShortAngle)) < tolerance * 2 &&
+                Math.min(Math.abs(longPinAngle - targetLongAngle), Math.PI * 2 - Math.abs(longPinAngle - targetLongAngle)) < tolerance * 2
+            );
+            draw();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Lock body
+            ctx.fillStyle = '#333'; ctx.fillRect(centerX - 100, centerY - 50, 200, 100);
+            // Keyhole outer
+            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(centerX, centerY, 80, 0, Math.PI * 2); ctx.fill();
+            // Keyhole inner
+            ctx.fillStyle = '#111'; ctx.beginPath();	ctx.arc(centerX, centerY, 25, 0, Math.PI * 2); ctx.fill();
+            // Shackle
+            ctx.fillStyle = '#111'; ctx.fillRect(centerX - 8, centerY, 16, 40);
+
+            // Target indicators
+            ctx.save(); ctx.translate(centerX, centerY);
+            ctx.strokeStyle = 'rgba(255,0,0,0.3)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(targetShortAngle) * shortPinLength, Math.sin(targetShortAngle) * shortPinLength);
+            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(targetLongAngle) * longPinLength, Math.sin(targetLongAngle) * longPinLength);
+            ctx.stroke();
+            ctx.restore();
+
+            // Pins
+            ctx.save(); ctx.translate(centerX, centerY); ctx.translate(shakeX, shakeY);
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(shortPinAngle) * shortPinLength, Math.sin(shortPinAngle) * shortPinLength);
+            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(longPinAngle) * longPinLength, Math.sin(longPinAngle) * longPinLength);
+            ctx.stroke();
+            ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+
+        function checkStrain() {
+            const sd = Math.abs(shortPinAngle - targetShortAngle);
+            const sw = Math.min(sd, Math.PI * 2 - sd);
+            const ld = Math.abs(longPinAngle - targetLongAngle);
+            const lw = Math.min(ld, Math.PI * 2 - ld);
+            return {
+                shortStrain: Math.max(0, (sw - tolerance) / Math.PI),
+                longStrain: Math.max(0, (lw - tolerance) / Math.PI)
+            };
+        }
+
+        function updatePins() {
+            if (!gameRunning || !isMouseInArea || !isMouseDown || !hasMoved) return;
+            const rect = mouseArea.getBoundingClientRect();
+            const relX = (mouseX - rect.left) / rect.width;
+            const relY = (mouseY - rect.top) / rect.height;
+            const { shortStrain, longStrain } = checkStrain();
+
+            // Success if both pins within tolerance
+            if (shortStrain === 0 && longStrain === 0) {
+                endGame(true);
+                return;
+            }
+
+            const maxStrain = Math.max(shortStrain, longStrain);
+            if (maxStrain > 0) {
+                if (!isStraining) {
+                    isStraining = true;
+                    strainStartTime = Date.now();
+                } else if (Date.now() - strainStartTime > 2000) {
+                    breakPin();
+                    return;
+                }
+            } else {
+                isStraining = false;
+                strainStartTime = 0;
+            }
+
+            const res = Math.pow(1 - maxStrain, 2);
+            shakeX = longStrain * 5;
+            shakeY = shortStrain * 5;
+            longPinAngle = relX * Math.PI * 2 * res + longPinAngle * (1 - res);
+            shortPinAngle = relY * Math.PI * 2 * res + shortPinAngle * (1 - res);
+            draw();
+        }
+
+        function breakPin() {
+            lives--;
+            updateLives();
+            if (lives <= 0) endGame(false);
+            else {
+                shortPinAngle = Math.random() * Math.PI * 2;
+                longPinAngle = Math.random() * Math.PI * 2;
+                isStraining = false;
+                strainStartTime = 0;
+                shakeX = shakeY = 0;
+                draw();
+            }
+        }
+
+        function updateLives() {
+            lifeIcons.forEach((icon, i) => {
+                if (i < lives) {
+                    icon.classList.add('active');
+                    icon.classList.remove('broken');
+                } else {
+                    icon.classList.remove('active');
+                    icon.classList.add('broken');
+                }
+            });
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            updatePins();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            gameRunning = true;
+            gameStarted = true;
+            timeLeft = 15;
+            lives = 3;
+            hasMoved = false;
+            isStraining = false;
+            strainStartTime = 0;
+            updateLives();
+            timerLabel.textContent = timeLeft;
+            clearInterval(gameTimer);
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                timerLabel.textContent = timeLeft;
+                if (timeLeft <= 0) endGame(false);
+            }, 1000);
+            init();
+            gameLoop();
+        }
+
+        function endGame(success) {
+            gameRunning = false;
+            clearInterval(gameTimer);
+            startButton.disabled = true;
+            gameOver.style.display = 'block';
+            const title = document.getElementById('gameOverTitle');
+            const msg = document.getElementById('gameOverMessage');
+            if (success) {
+                title.textContent = 'Success!';
+                title.className = 'success';
+                msg.textContent = "You've picked that lock!";
+            } else {
+                title.textContent = 'Fail!';
+                title.className = 'failure';
+                msg.textContent = lives <= 0 ? 'All lockpicks got broken!' : 'Time is over!';
+            }
+        }
+
+        function resetGame() {
+            gameRunning = false;
+            clearInterval(gameTimer);
+            startButton.disabled = false;
+            gameOver.style.display = 'none';
+            timeLeft = 15;
+            lives = 3;
+            hasMoved = false;
+            isStraining = false;
+            strainStartTime = 0;
+            shakeX = shakeY = 0;
+            updateLives();
+            timerLabel.textContent = timeLeft;
+            init();
+        }
+
+        mouseArea.addEventListener('mouseenter', () => isMouseInArea = true);
+        mouseArea.addEventListener('mouseleave', () => { isMouseInArea = false; hasMoved = false; });
+        mouseArea.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; if (isMouseDown) hasMoved = true; });
+        window.addEventListener('mousedown', e => { if (e.button === 0) { isMouseDown = true; hasMoved = false; }});
+        window.addEventListener('mouseup', e => { if (e.button === 0) isMouseDown = false; });
+        startButton.addEventListener('click', startGame);
+    </script>
+</body>
+</html>
