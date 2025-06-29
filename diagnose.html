@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Diagnose</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      text-align: center;
+      font-family: sans-serif;
+      padding-top: 30px;
+    }
+
+    h1 { font-size: 2em; }
+
+    .dashboard {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 20px;
+    }
+
+    .icon-btn {
+      width: 70px;
+      height: 70px;
+      font-size: 32px;
+      margin: 10px;
+      background: #222;
+      border: 2px solid #444;
+      border-radius: 10px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .icon-btn.highlight {
+      background-color: orange;
+      color: black;
+    }
+
+    #startBtn {
+      margin-top: 20px;
+      padding: 12px 24px;
+      font-size: 16px;
+      background: #28a745;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #message, #timer {
+      margin-top: 10px;
+      font-size: 1.1em;
+    }
+
+    #score {
+      margin-top: 10px;
+      font-size: 1.2em;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Diagnose</h1>
+  <div id="score">Score: 0</div>
+  <div class="dashboard" id="dashboard"></div>
+  <button id="startBtn">Start</button>
+  <div id="message"></div>
+  <div id="timer"></div>
+
+  <script>
+    const icons = ['🔧', '🚨', '🛢️', '🔋', '⚠️'];
+
+    const dashboard = document.getElementById('dashboard');
+    const startBtn = document.getElementById('startBtn');
+    const message = document.getElementById('message');
+    const scoreDisplay = document.getElementById('score');
+    const timerDisplay = document.getElementById('timer');
+
+    let sequence = [];
+    let playerInput = [];
+    let round = 0;
+    let score = 0;
+
+    const maxRounds = 3;
+    const inputTimeLimit = 5000;
+    const highlightButtonTime = 300;
+    const highlightButtonDelay = 300;
+
+    // Butonları oluştur
+    icons.forEach((icon, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'icon-btn';
+      btn.dataset.id = i;
+      btn.textContent = icon;
+      dashboard.appendChild(btn);
+    });
+
+    const buttons = document.querySelectorAll('.icon-btn');
+
+    function highlightButton(index, delay) {
+      return new Promise(resolve => {
+        setTimeout(() => {
+          const btn = buttons[index];
+          btn.classList.add('highlight');
+          setTimeout(() => {
+            btn.classList.remove('highlight');
+            resolve();
+          }, highlightButtonTime);
+        }, delay);
+      });
+    }
+
+    async function playSequence() {
+      disableInput();
+      for (let i = 0; i < sequence.length; i++) {
+        await highlightButton(sequence[i], i * highlightButtonDelay);
+      }
+      enableInput();
+      waitForInput();
+    }
+
+    function generateSequenceForRound() {
+      const length = Math.min(5, 3 + round); // 3→4→5
+      return Array.from({ length }, () => Math.floor(Math.random() * buttons.length));
+    }
+
+    function nextRound() {
+      round++;
+      if (round > maxRounds) {
+        message.textContent = `🎉 Game Over! Final Score: ${score}`;
+        timerDisplay.textContent = "";
+        return;
+      }
+
+      message.textContent = `Round ${round}`;
+      sequence = generateSequenceForRound();
+      playerInput = [];
+      setTimeout(playSequence, 500);
+    }
+
+    function resetGame() {
+      sequence = [];
+      playerInput = [];
+      round = 0;
+      score = 0;
+      message.textContent = '';
+      scoreDisplay.textContent = 'Score: 0';
+      timerDisplay.textContent = '';
+    }
+
+    function waitForInput() {
+      let remaining = inputTimeLimit / 1000;
+      timerDisplay.textContent = `⏳ ${remaining.toFixed(1)}s`;
+
+      const interval = setInterval(() => {
+        remaining -= 0.1;
+        timerDisplay.textContent = `⏳ ${Math.max(remaining, 0).toFixed(1)}s`;
+      }, 100);
+
+      const timeout = setTimeout(() => {
+        clearInterval(interval);
+        endRound(false);
+      }, inputTimeLimit);
+
+      buttons.forEach(btn => {
+        btn.onclick = () => {
+          const id = parseInt(btn.dataset.id);
+          playerInput.push(id);
+
+          if (playerInput[playerInput.length - 1] !== sequence[playerInput.length - 1]) {
+            clearInterval(interval);
+            clearTimeout(timeout);
+            endRound(false);
+            return;
+          }
+
+          if (playerInput.length === sequence.length) {
+            clearInterval(interval);
+            clearTimeout(timeout);
+            endRound(true);
+          }
+        };
+      });
+    }
+
+    function enableInput() {
+      buttons.forEach(btn => btn.disabled = false);
+    }
+
+    function disableInput() {
+      buttons.forEach(btn => btn.disabled = true);
+    }
+
+    function endRound(success) {
+      disableInput();
+      timerDisplay.textContent = "";
+      if (success) {
+        score++;
+        message.textContent = '✅ Correct!';
+      } else {
+        message.textContent = '❌ Wrong or Timeout!';
+      }
+      scoreDisplay.textContent = `Score: ${score}`;
+      setTimeout(nextRound, 1500);
+    }
+
+    startBtn.onclick = () => {
+      resetGame();
+      nextRound();
+    };
+  </script>
+</body>
+</html>
