@@ -543,16 +543,16 @@
             const message = document.getElementById('gameOverMessage');
             
             if (success) {
-                title.textContent = 'Başarılı!';
+                title.textContent = 'Success!';
                 title.className = 'success';
-                message.textContent = 'Kilidi açmayı başardın!';
+                message.textContent = 'Youve picked that lock!';
             } else {
-                title.textContent = 'Başarısız!';
+                title.textContent = 'Fail!';
                 title.className = 'failure';
                 if (lives <= 0) {
-                    message.textContent = 'Tüm pinler kırıldı!';
+                    message.textContent = 'All lockpicks got broken!';
                 } else {
-                    message.textContent = 'Süre doldu!';
+                    message.textContent = 'Time is over!';
                 }
             }
         }
