@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Probe Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        .game-container {
+            position: relative;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.3);
+        }
+        
+        .timer {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .timer-bar {
+            width: 200px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+        
+        .timer-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b35, #f7931e);
+            border-radius: 4px;
+            transition: width 0.1s ease;
+        }
+        
+        .title {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #f7931e;
+            font-size: 36px;
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(247, 147, 30, 0.5);
+        }
+        
+        canvas {
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            background: #0a0a0a;
+            cursor: none;
+        }
+        
+        .instruction {
+            color: white;
+            text-align: center;
+            margin-top: 15px;
+            font-size: 18px;
+        }
+        
+        .fault-text {
+            color: #ff0000;
+            font-weight: bold;
+        }
+        
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            display: none;
+            border: 2px solid #f7931e;
+        }
+        
+        .restart-btn {
+            background: linear-gradient(45deg, #f7931e, #ff6b35);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: transform 0.2s;
+        }
+        
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="timer">
+            TIME
+            <div class="timer-bar">
+                <div class="timer-fill" id="timerFill"></div>
+            </div>
+        </div>
+        
+        <div class="title">Probe</div>
+        
+        <canvas id="gameCanvas" width="600" height="400"></canvas>
+        
+        <div class="instruction">
+            Guide the <strong>Probe</strong> with your finger/mouse - Avoid the <span class="fault-text">Fault</span>
+        </div>
+        
+        <div class="game-over" id="gameOver">
+            <h2 id="gameOverTitle">Game Over!</h2>
+            <p id="gameOverMessage">You hit the fault!</p>
+            <button class="restart-btn" onclick="restartGame()">Restart Game</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const timerFill = document.getElementById('timerFill');
+        const gameOverDiv = document.getElementById('gameOver');
+        const gameOverTitle = document.getElementById('gameOverTitle');
+        const gameOverMessage = document.getElementById('gameOverMessage');
+        
+        let gameState = {
+            probe: { x: 60, y: 200, size: 15, trail: [], targetX: 60, targetY: 200 },
+            faults: [],
+            walls: [],
+            gameRunning: true,
+            timeLeft: 10,
+            maxTime: 10,
+            level: 1,
+            score: 0
+        };
+        
+        let mousePos = { x: 50, y: 200 };
+        let isMouseInCanvas = false;
+        
+        // Generate maze-like walls
+        function generateMaze() {
+            gameState.walls = [];
+            
+            // Outer boundaries
+            gameState.walls.push(
+                { x: 0, y: 0, width: canvas.width, height: 20 },
+                { x: 0, y: canvas.height - 20, width: canvas.width, height: 20 },
+                { x: 0, y: 0, width: 20, height: canvas.height },
+                { x: canvas.width - 20, y: 0, width: 20, height: canvas.height }
+            );
+            
+            // Internal maze walls
+            const mazePatterns = [
+                { x: 100, y: 80, width: 150, height: 20 },
+                { x: 300, y: 120, width: 20, height: 100 },
+                { x: 150, y: 200, width: 100, height: 20 },
+                { x: 400, y: 60, width: 20, height: 120 },
+                { x: 200, y: 300, width: 200, height: 20 },
+                { x: 80, y: 250, width: 20, height: 80 },
+                { x: 450, y: 200, width: 80, height: 20 },
+                { x: 350, y: 280, width: 20, height: 80 }
+            ];
+            
+            gameState.walls.push(...mazePatterns);
+        }
+        
+        // Generate fault zones
+        function generateFaults() {
+            gameState.faults = [
+                { x: 520, y: 350, size: 20, intensity: 0 },
+                { x: 250, y: 120, size: 15, intensity: 0 },
+                { x: 450, y: 300, size: 18, intensity: 0 }
+            ];
+        }
+        
+        // Initialize game
+        function initGame() {
+            generateMaze();
+            generateFaults();
+            gameState.gameRunning = true;
+            gameState.timeLeft = gameState.maxTime;
+            gameState.probe.x = 60;
+            gameState.probe.y = 200;
+            gameState.probe.targetX = 60;
+            gameState.probe.targetY = 200;
+            gameState.probe.trail = [];
+            gameOverDiv.style.display = 'none';
+        }
+        
+        // Mouse tracking with 4-directional movement
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const rawX = e.clientX - rect.left;
+            const rawY = e.clientY - rect.top;
+            
+            // Calculate direction from current probe position
+            const dx = rawX - gameState.probe.x;
+            const dy = rawY - gameState.probe.y;
+            
+            // Determine primary direction (only 4 directions allowed)
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal movement
+                if (dx > 20) {
+                    mousePos.x = gameState.probe.x + 20;
+                    mousePos.y = gameState.probe.y;
+                } else if (dx < -20) {
+                    mousePos.x = gameState.probe.x - 20;
+                    mousePos.y = gameState.probe.y;
+                } else {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y;
+                }
+            } else {
+                // Vertical movement
+                if (dy > 20) {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y + 20;
+                } else if (dy < -20) {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y - 20;
+                } else {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y;
+                }
+            }
+        });
+        
+        canvas.addEventListener('mouseenter', () => {
+            isMouseInCanvas = true;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isMouseInCanvas = false;
+        });
+        
+        // Touch support with 4-directional movement
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const rawX = touch.clientX - rect.left;
+            const rawY = touch.clientY - rect.top;
+            
+            // Calculate direction from current probe position
+            const dx = rawX - gameState.probe.x;
+            const dy = rawY - gameState.probe.y;
+            
+            // Determine primary direction (only 4 directions allowed)
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // Horizontal movement
+                if (dx > 20) {
+                    mousePos.x = gameState.probe.x + 20;
+                    mousePos.y = gameState.probe.y;
+                } else if (dx < -20) {
+                    mousePos.x = gameState.probe.x - 20;
+                    mousePos.y = gameState.probe.y;
+                } else {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y;
+                }
+            } else {
+                // Vertical movement
+                if (dy > 20) {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y + 20;
+                } else if (dy < -20) {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y - 20;
+                } else {
+                    mousePos.x = gameState.probe.x;
+                    mousePos.y = gameState.probe.y;
+                }
+            }
+            isMouseInCanvas = true;
+        });
+        
+        // Collision detection
+        function checkWallCollision(x, y, size) {
+            for (let wall of gameState.walls) {
+                if (x - size < wall.x + wall.width &&
+                    x + size > wall.x &&
+                    y - size < wall.y + wall.height &&
+                    y + size > wall.y) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        function checkFaultCollision(x, y, size) {
+            for (let fault of gameState.faults) {
+                const distance = Math.sqrt(
+                    Math.pow(x - (fault.x + fault.size/2), 2) + 
+                    Math.pow(y - (fault.y + fault.size/2), 2)
+                );
+                if (distance < size + fault.size/2) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // Update game logic
+        function update() {
+            if (!gameState.gameRunning) return;
+            
+            // Update target position based on mouse/touch (4-directional only)
+            if (isMouseInCanvas) {
+                gameState.probe.targetX = mousePos.x;
+                gameState.probe.targetY = mousePos.y;
+            }
+            
+            // Move probe towards target with 4-directional movement only
+            const dx = gameState.probe.targetX - gameState.probe.x;
+            const dy = gameState.probe.targetY - gameState.probe.y;
+            
+            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+                const speed = 20; // Move exactly one grid cell at a time
+                let newX = gameState.probe.x;
+                let newY = gameState.probe.y;
+                
+                // Move only in 4 directions: up, down, left, right
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    // Horizontal movement
+                    newX += dx > 0 ? speed : -speed;
+                } else {
+                    // Vertical movement  
+                    newY += dy > 0 ? speed : -speed;
+                }
+                
+                // Check collisions before moving
+                if (!checkWallCollision(newX, newY, gameState.probe.size)) {
+                    gameState.probe.x = newX;
+                    gameState.probe.y = newY;
+                    
+                    // Add to trail for each move
+                    gameState.probe.trail.push({
+                        x: gameState.probe.x,
+                        y: gameState.probe.y,
+                        life: 40
+                    });
+                    
+                    // Limit trail length
+                    if (gameState.probe.trail.length > 12) {
+                        gameState.probe.trail.shift();
+                    }
+                }
+            }
+            
+            // Update trail
+            gameState.probe.trail = gameState.probe.trail.filter(point => {
+                point.life--;
+                return point.life > 0;
+            });
+            
+            // Update fault animations (slower)
+            gameState.faults.forEach(fault => {
+                fault.intensity = (fault.intensity + 0.05) % (Math.PI * 2);
+            });
+            
+            // Check fault collision
+            if (checkFaultCollision(gameState.probe.x, gameState.probe.y, gameState.probe.size)) {
+                endGame('fault');
+                return;
+            }
+            
+            // Update timer (10 second countdown)
+            gameState.timeLeft -= 1/60; // 60 FPS, so 1 second = 60 frames
+            const percentage = (gameState.timeLeft / gameState.maxTime) * 100;
+            timerFill.style.width = Math.max(0, percentage) + '%';
+            
+            if (gameState.timeLeft <= 0) {
+                endGame('time');
+            }
+            
+            // Check win condition (reach end area)
+            if (gameState.probe.x > canvas.width - 80 && gameState.probe.y > canvas.height - 80) {
+                endGame('win');
+            }
+        }
+        
+        // Render game
+        function render() {
+            // Clear canvas
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw walls
+            ctx.fillStyle = '#2a2a3a';
+            ctx.strokeStyle = '#4a4a5a';
+            ctx.lineWidth = 2;
+            
+            gameState.walls.forEach(wall => {
+                ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+                ctx.strokeRect(wall.x, wall.y, wall.width, wall.height);
+            });
+            
+            // Draw probe trail
+            gameState.probe.trail.forEach((point, index) => {
+                const alpha = point.life / 30;
+                const size = (alpha * 8) + 2;
+                
+                ctx.fillStyle = `rgba(0, 200, 255, ${alpha * 0.6})`;
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Draw probe
+            const probe = gameState.probe;
+            
+            // Probe glow
+            const gradient = ctx.createRadialGradient(probe.x, probe.y, 0, probe.x, probe.y, probe.size * 2);
+            gradient.addColorStop(0, 'rgba(0, 200, 255, 0.8)');
+            gradient.addColorStop(1, 'rgba(0, 200, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(probe.x, probe.y, probe.size * 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Probe body
+            ctx.fillStyle = '#00c8ff';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(probe.x, probe.y, probe.size, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Probe center
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(probe.x, probe.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Draw faults
+            gameState.faults.forEach(fault => {
+                const pulseSize = fault.size + Math.sin(fault.intensity) * 5;
+                
+                // Fault glow
+                const faultGradient = ctx.createRadialGradient(
+                    fault.x + fault.size/2, fault.y + fault.size/2, 0,
+                    fault.x + fault.size/2, fault.y + fault.size/2, pulseSize * 1.5
+                );
+                faultGradient.addColorStop(0, 'rgba(255, 50, 50, 0.8)');
+                faultGradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+                
+                ctx.fillStyle = faultGradient;
+                ctx.beginPath();
+                ctx.arc(fault.x + fault.size/2, fault.y + fault.size/2, pulseSize * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Fault core
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.arc(fault.x + fault.size/2, fault.y + fault.size/2, pulseSize, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Fault center
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(fault.x + fault.size/2, fault.y + fault.size/2, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Draw goal area
+            ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+            ctx.fillRect(canvas.width - 80, canvas.height - 80, 80, 80);
+            ctx.strokeRect(canvas.width - 80, canvas.height - 80, 80, 80);
+            
+            ctx.fillStyle = '#00ff00';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('GOAL', canvas.width - 40, canvas.height - 35);
+        }
+        
+        // End game
+        function endGame(reason) {
+            gameState.gameRunning = false;
+            
+            switch(reason) {
+                case 'fault':
+                    gameOverTitle.textContent = 'FAULT DETECTED!';
+                    gameOverMessage.textContent = 'Your probe hit a fault zone!';
+                    break;
+                case 'time':
+                    gameOverTitle.textContent = 'TIME\'S UP!';
+                    gameOverMessage.textContent = 'You ran out of time!';
+                    break;
+                case 'win':
+                    gameOverTitle.textContent = 'SUCCESS!';
+                    gameOverMessage.textContent = 'You successfully guided the probe to the goal!';
+                    break;
+            }
+            
+            gameOverDiv.style.display = 'block';
+        }
+        
+        // Restart game
+        function restartGame() {
+            initGame();
+        }
+        
+        // Game loop
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start game
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
