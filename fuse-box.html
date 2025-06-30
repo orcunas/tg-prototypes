@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cable Connection Puzzle</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #1a1a2e;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .game-container {
+            background: #2d3436;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .timer-bar {
+            background: #444;
+            height: 40px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .timer-fill {
+            background: #ff9f43;
+            height: 100%;
+            width: 100%;
+            border-radius: 20px;
+            transition: width 0.1s linear;
+        }
+
+        .timer-text {
+            position: absolute;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+            font-weight: bold;
+            color: #fff;
+            z-index: 1;
+        }
+
+        .puzzle-board {
+            background: #34495e;
+            border-radius: 15px;
+            padding: 20px;
+            position: relative;
+            margin-bottom: 20px;
+            min-height: 300px;
+        }
+
+        .connectors {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 150px;
+            position: relative;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .connector-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            pointer-events: auto;
+        }
+
+        .connector {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+            position: relative;
+            z-index: 10;
+        }
+
+        .connector:hover {
+            transform: scale(1.1);
+        }
+
+        .connector.selected {
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+            transform: scale(1.1);
+        }
+
+        .connector.connected {
+            opacity: 0.7;
+        }
+
+        .connector-dot {
+            width: 20px;
+            height: 20px;
+            background: #2c3e50;
+            border-radius: 50%;
+            border: 3px solid #000;
+        }
+
+        svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: auto;
+            z-index: 5;
+        }
+
+        .cable {
+            fill: none;
+            stroke-width: 8;
+            opacity: 0.9;
+            cursor: pointer;
+            pointer-events: stroke;
+            transition: opacity 0.3s;
+        }
+
+        .cable:hover {
+            opacity: 1;
+            stroke-width: 10;
+        }
+
+        .cable.selected-cable {
+            stroke-dasharray: 10 5;
+            animation: dash 0.5s linear infinite;
+        }
+
+        @keyframes dash {
+            to {
+                stroke-dashoffset: -15;
+            }
+        }
+
+        .instructions {
+            text-align: center;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .instructions h2 {
+            color: #00d2d3;
+            margin-bottom: 10px;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: #00d2d3;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #00a8a8;
+        }
+
+        button.disconnect-btn {
+            background: #e74c3c;
+        }
+
+        button.disconnect-btn:hover {
+            background: #c0392b;
+        }
+
+        .level-indicator {
+            text-align: center;
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #00d2d3;
+        }
+
+        .message {
+            text-align: center;
+            font-size: 18px;
+            margin-top: 20px;
+            min-height: 30px;
+        }
+
+        .message.success {
+            color: #2ecc71;
+        }
+
+        .message.error {
+            color: #e74c3c;
+        }
+
+        .mode-indicator {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #f39c12;
+        }
+
+        /* Color definitions */
+        .purple { background: #9b59b6; }
+        .orange { background: #e67e22; }
+        .yellow { background: #f1c40f; }
+        .red { background: #e74c3c; }
+        .blue { background: #3498db; }
+        .green { background: #2ecc71; }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div class="timer-bar">
+            <div class="timer-text">TIME</div>
+            <div class="timer-fill" id="timerFill"></div>
+        </div>
+        
+        <div class="level-indicator" id="levelIndicator">Level 1</div>
+        
+        <div class="instructions">
+            <h2>Separate the wrong connections and connect them with right Colors</h2>
+        </div>
+
+        <div class="mode-indicator" id="modeIndicator">Click on cables to disconnect them</div>
+
+        <div class="puzzle-board" id="puzzleBoard">
+            <svg id="cableSvg"></svg>
+            <div class="connectors">
+                <div class="connector-column" id="leftConnectors"></div>
+                <div class="connector-column" id="rightConnectors"></div>
+            </div>
+        </div>
+
+        <div class="message" id="message"></div>
+
+        <div class="buttons">
+            <button onclick="checkSolution()">Check Solution</button>
+            <button onclick="initLevel()">Reset Level</button>
+            <button onclick="nextLevel()">Next Level</button>
+            <button class="disconnect-btn" onclick="disconnectAll()">Disconnect All</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedConnector = null;
+        let selectedCable = null;
+        let connections = [];
+        let currentLevel = 1;
+        let timer = null;
+        let timeRemaining = 60;
+
+        const levels = [
+            {
+                colors: ['purple', 'orange', 'yellow', 'red'],
+                solution: {
+                    'purple-left': 'purple-right',
+                    'orange-left': 'orange-right',
+                    'yellow-left': 'yellow-right',
+                    'red-left': 'red-right'
+                },
+                initial: [
+                    ['purple-left', 'red-right'],
+                    ['orange-left', 'yellow-right'],
+                    ['yellow-left', 'purple-right'],
+                    ['red-left', 'orange-right']
+                ]
+            },
+            {
+                colors: ['purple', 'orange', 'yellow', 'red', 'blue'],
+                solution: {
+                    'purple-left': 'purple-right',
+                    'orange-left': 'orange-right',
+                    'yellow-left': 'yellow-right',
+                    'red-left': 'red-right',
+                    'blue-left': 'blue-right'
+                },
+                initial: [
+                    ['purple-left', 'blue-right'],
+                    ['orange-left', 'red-right'],
+                    ['yellow-left', 'orange-right'],
+                    ['red-left', 'yellow-right'],
+                    ['blue-left', 'purple-right']
+                ]
+            },
+            {
+                colors: ['purple', 'orange', 'yellow', 'red', 'blue', 'green'],
+                solution: {
+                    'purple-left': 'purple-right',
+                    'orange-left': 'orange-right',
+                    'yellow-left': 'yellow-right',
+                    'red-left': 'red-right',
+                    'blue-left': 'blue-right',
+                    'green-left': 'green-right'
+                },
+                initial: [
+                    ['purple-left', 'green-right'],
+                    ['orange-left', 'blue-right'],
+                    ['yellow-left', 'red-right'],
+                    ['red-left', 'yellow-right'],
+                    ['blue-left', 'orange-right'],
+                    ['green-left', 'purple-right']
+                ]
+            }
+        ];
+
+        function initLevel() {
+            clearInterval(timer);
+            timeRemaining = 60 + (currentLevel - 1) * 30;
+            startTimer();
+            
+            document.getElementById('levelIndicator').textContent = `Level ${currentLevel}`;
+            document.getElementById('message').textContent = '';
+            
+            const level = levels[currentLevel - 1];
+            const leftContainer = document.getElementById('leftConnectors');
+            const rightContainer = document.getElementById('rightConnectors');
+            
+            leftContainer.innerHTML = '';
+            rightContainer.innerHTML = '';
+            connections = [];
+            selectedConnector = null;
+            selectedCable = null;
+            
+            // Create connectors
+            level.colors.forEach(color => {
+                const leftConn = createConnector(color, 'left');
+                const rightConn = createConnector(color, 'right');
+                leftContainer.appendChild(leftConn);
+                rightContainer.appendChild(rightConn);
+            });
+            
+            // Set initial wrong connections
+            level.initial.forEach((conn, index) => {
+                connections.push({
+                    id: index,
+                    from: conn[0],
+                    to: conn[1],
+                    fromPos: getConnectorPosition(conn[0]),
+                    toPos: getConnectorPosition(conn[1])
+                });
+            });
+            
+            updateConnectorStates();
+            drawCables();
+        }
+
+        function createConnector(color, side) {
+            const connector = document.createElement('div');
+            connector.className = `connector ${color}`;
+            connector.id = `${color}-${side}`;
+            connector.innerHTML = '<div class="connector-dot"></div>';
+            connector.onclick = () => selectConnector(connector);
+            return connector;
+        }
+
+        function selectConnector(connector) {
+            // Check if this connector already has a connection
+            const hasConnection = connections.some(conn => 
+                conn.from === connector.id || conn.to === connector.id
+            );
+            
+            if (hasConnection) {
+                document.getElementById('modeIndicator').textContent = 'This connector is already connected! Disconnect it first.';
+                return;
+            }
+            
+            if (!selectedConnector) {
+                selectedConnector = connector;
+                connector.classList.add('selected');
+                document.getElementById('modeIndicator').textContent = 'Now select the other connector to connect';
+            } else {
+                if (selectedConnector === connector) {
+                    connector.classList.remove('selected');
+                    selectedConnector = null;
+                    document.getElementById('modeIndicator').textContent = 'Click on cables to disconnect them';
+                    return;
+                }
+                
+                const fromSide = selectedConnector.id.includes('left') ? 'left' : 'right';
+                const toSide = connector.id.includes('left') ? 'left' : 'right';
+                
+                if (fromSide !== toSide) {
+                    // Add new connection
+                    connections.push({
+                        id: Date.now(),
+                        from: selectedConnector.id,
+                        to: connector.id,
+                        fromPos: getConnectorPosition(selectedConnector.id),
+                        toPos: getConnectorPosition(connector.id)
+                    });
+                    
+                    updateConnectorStates();
+                    drawCables();
+                    document.getElementById('modeIndicator').textContent = 'Connection made! Click on cables to disconnect them';
+                } else {
+                    document.getElementById('modeIndicator').textContent = 'Cannot connect two connectors on the same side!';
+                }
+                
+                selectedConnector.classList.remove('selected');
+                selectedConnector = null;
+            }
+        }
+
+        function updateConnectorStates() {
+            // Update all connectors to show if they're connected
+            document.querySelectorAll('.connector').forEach(conn => {
+                const isConnected = connections.some(connection => 
+                    connection.from === conn.id || connection.to === conn.id
+                );
+                
+                if (isConnected) {
+                    conn.classList.add('connected');
+                } else {
+                    conn.classList.remove('connected');
+                }
+            });
+        }
+
+        function getConnectorPosition(id) {
+            const elem = document.getElementById(id);
+            const board = document.getElementById('puzzleBoard');
+            const rect = elem.getBoundingClientRect();
+            const boardRect = board.getBoundingClientRect();
+            
+            return {
+                x: rect.left - boardRect.left + rect.width / 2,
+                y: rect.top - boardRect.top + rect.height / 2
+            };
+        }
+
+        function drawCables() {
+            const svg = document.getElementById('cableSvg');
+            svg.innerHTML = '';
+            
+            connections.forEach(conn => {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const color = conn.from.split('-')[0];
+                
+                // Update positions in case of window resize
+                conn.fromPos = getConnectorPosition(conn.from);
+                conn.toPos = getConnectorPosition(conn.to);
+                
+                const midX = (conn.fromPos.x + conn.toPos.x) / 2;
+                const d = `M ${conn.fromPos.x} ${conn.fromPos.y} Q ${midX} ${conn.fromPos.y} ${midX} ${(conn.fromPos.y + conn.toPos.y) / 2} T ${conn.toPos.x} ${conn.toPos.y}`;
+                
+                path.setAttribute('d', d);
+                path.setAttribute('class', 'cable');
+                path.setAttribute('stroke', getColorHex(color));
+                path.setAttribute('data-connection-id', conn.id);
+                
+                // Add click event to cable
+                path.onclick = (e) => {
+                    e.stopPropagation();
+                    selectCable(conn.id, path);
+                };
+                
+                svg.appendChild(path);
+            });
+        }
+
+        function selectCable(connectionId, pathElement) {
+            // Remove previous selection
+            if (selectedCable) {
+                selectedCable.classList.remove('selected-cable');
+            }
+            
+            selectedCable = pathElement;
+            pathElement.classList.add('selected-cable');
+            
+            // Disconnect after a short delay for visual feedback
+            setTimeout(() => {
+                connections = connections.filter(conn => conn.id !== connectionId);
+                updateConnectorStates();
+                drawCables();
+                selectedCable = null;
+                document.getElementById('modeIndicator').textContent = 'Cable disconnected! Select connectors to make new connections';
+            }, 300);
+        }
+
+        function disconnectAll() {
+            connections = [];
+            updateConnectorStates();
+            drawCables();
+            document.getElementById('modeIndicator').textContent = 'All cables disconnected! Now connect them correctly';
+        }
+
+        function getColorHex(color) {
+            const colors = {
+                purple: '#9b59b6',
+                orange: '#e67e22',
+                yellow: '#f1c40f',
+                red: '#e74c3c',
+                blue: '#3498db',
+                green: '#2ecc71'
+            };
+            return colors[color] || '#fff';
+        }
+
+        function checkSolution() {
+            const level = levels[currentLevel - 1];
+            let correct = true;
+            
+            // Check if all required connections exist
+            for (let [from, to] of Object.entries(level.solution)) {
+                const hasCorrectConnection = connections.some(conn => 
+                    (conn.from === from && conn.to === to) || 
+                    (conn.from === to && conn.to === from)
+                );
+                
+                if (!hasCorrectConnection) {
+                    correct = false;
+                    break;
+                }
+            }
+            
+            // Also check if there are no extra connections
+            if (connections.length !== Object.keys(level.solution).length) {
+                correct = false;
+            }
+            
+            const message = document.getElementById('message');
+            if (correct) {
+                message.textContent = 'Excellent! All connections are correct!';
+                message.className = 'message success';
+                clearInterval(timer);
+            } else {
+                message.textContent = 'Not quite right. Keep trying!';
+                message.className = 'message error';
+            }
+        }
+
+        function nextLevel() {
+            if (currentLevel < levels.length) {
+                currentLevel++;
+                initLevel();
+            } else {
+                const message = document.getElementById('message');
+                message.textContent = 'Congratulations! You completed all levels!';
+                message.className = 'message success';
+            }
+        }
+
+        function startTimer() {
+            const timerFill = document.getElementById('timerFill');
+            
+            timer = setInterval(() => {
+                timeRemaining--;
+                const percentage = (timeRemaining / (60 + (currentLevel - 1) * 30)) * 100;
+                timerFill.style.width = percentage + '%';
+                
+                if (timeRemaining <= 0) {
+                    clearInterval(timer);
+                    const message = document.getElementById('message');
+                    message.textContent = 'Time\'s up! Try again!';
+                    message.className = 'message error';
+                }
+            }, 1000);
+        }
+
+        // Initialize first level
+        initLevel();
+    </script>
+</body>
+</html>
